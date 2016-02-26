@@ -16,6 +16,8 @@ module ASC_LDA_peripheral (
 	output waitrequest;
 	/* registers */
 	reg [31 : 0] Mode_reg, Status_reg, Go_reg, Line_start_reg, Line_end_reg;
+	/* internal signals */
+	reg POLL_MODE_clear_status;
 	parameter STALL_MODE = 0, POLL_MODE = 1;
 
 	/* writing to registers */
@@ -33,6 +35,18 @@ module ASC_LDA_peripheral (
 			3'd0: /* mode register */
 				begin
 					if (write) Mode_reg <= writedata; 	
+				end
+			3'd1: /* Status register */
+				begin
+					if (Done && POLL_MODE) begin
+					// in poll mode, the status register is assigned 1 when the 
+					// lda controller has done its work
+						Status_reg <= 32'b1;
+					end 	
+					else if (POLL_MODE_clear_status) begin
+					// when the processor has has read the 1, we clear that bit 
+						Status_reg <= 32'b0;
+					end
 				end
 			3'd2: /* Go register */
 				begin
@@ -65,6 +79,7 @@ module ASC_LDA_peripheral (
 	end
 
 	/* waitrequest signal should only be asserted when... writing to Go register and its in stall mode */
-	assign waitrequest = (!chipselect && write && address == 3'd1 && Mode_reg[0] == STALL_MODE && !Done)? 1: 0;
-	
+	assign waitrequest = (!chipselect && write && address == 3'd2 && Mode_reg[0] == STALL_MODE && !Done)? 1: 0;
+	/* We want to clear the status register if the processor has read the 1, and then at the next posedge we can clear it*/
+	assign POLL_MODE_clear_status = (!chipselect && Mode_reg[0] = POLL_MODE && address == 3'd1 && read && Status_reg[0] == 1)? 1: 0;
 endmodule
